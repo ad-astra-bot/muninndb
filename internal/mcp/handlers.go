@@ -69,7 +69,7 @@ func (s *MCPServer) handleRemember(ctx context.Context, w http.ResponseWriter, i
 
 	content, ok := args["content"].(string)
 	if !ok || strings.TrimSpace(content) == "" {
-		sendError(w, id, -32602, "invalid params: 'content' is required")
+		sendError(w, id, -32602, "invalid params: 'content' is required (non-empty string, <=600 chars recommended for atomic memories). CLI: python3 ~/skills/muninn/scripts/muninn_remember.py --vault <vault> --concept <title> --content <text>")
 		return
 	}
 	req := &mbp.WriteRequest{
@@ -377,7 +377,7 @@ func (s *MCPServer) handleRecall(ctx context.Context, w http.ResponseWriter, id 
 
 	resp, err := s.engine.Activate(ctx, req)
 	if err != nil {
-		sendError(w, id, -32000, "tool error: "+err.Error())
+		sendError(w, id, -32000, fmt.Sprintf("tool error: %s — if embedding backend is unreachable, CLI fallback: python3 ~/skills/muninn/scripts/muninn_recall.py %q --vault %s", err.Error(), strings.Join(req.Context, " "), vault))
 		return
 	}
 
@@ -506,7 +506,17 @@ func (s *MCPServer) handleEvolve(ctx context.Context, w http.ResponseWriter, id 
 	newContent, ok2 := args["new_content"].(string)
 	reason, ok3 := args["reason"].(string)
 	if !ok1 || !ok2 || !ok3 || engramID == "" || newContent == "" || reason == "" {
-		sendError(w, id, -32602, "invalid params: 'id', 'new_content', 'reason' are required")
+		var missing []string
+		if !ok1 || engramID == "" {
+			missing = append(missing, "'id' (engram ID to update)")
+		}
+		if !ok2 || newContent == "" {
+			missing = append(missing, "'new_content' (replacement text)")
+		}
+		if !ok3 || reason == "" {
+			missing = append(missing, "'reason' (why the memory changed)")
+		}
+		sendError(w, id, -32602, fmt.Sprintf("invalid params: missing required field(s): %s", strings.Join(missing, ", ")))
 		return
 	}
 	var evolveEmb []float32

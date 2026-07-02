@@ -496,7 +496,17 @@ func (e *ActivationEngine) phase1(ctx context.Context, req *ActivateRequest) (*p
 	if e.embedder != nil && e.hnsw != nil {
 		vec, err := e.embedder.Embed(ctx, req.Context)
 		if err != nil {
-			return nil, fmt.Errorf("phase1 embed: %w", err)
+			// Embedding backend unreachable (e.g. connection refused on the
+			// Ollama/embedding LB endpoint). Degrade to BM25+decay recall
+			// instead of aborting: FTS still returns useful results.
+			// Embeddings for new memories are queued for retroactive enrichment
+			// once the backend recovers (muninn_retry_enrich).
+			// CLI fallback: python3 ~/skills/muninn/scripts/muninn_recall.py
+			slog.Warn("phase1: embed backend unreachable, degrading to BM25-only recall",
+				"vault", req.VaultID,
+				"error", err,
+				"cli_fallback", "python3 ~/skills/muninn/scripts/muninn_recall.py <context> --vault <vault>")
+			return result, nil
 		}
 		result.embedding = vec
 	}
